@@ -9,7 +9,7 @@ pub fn get_subscriber<Sink>(
     name: String,
     env_filter: String,
     sink: Sink,
-    log_file: PathBuf,
+    log_file: Option<PathBuf>,
 ) -> impl Subscriber + Send + Sync
 where
     Sink: for<'a> MakeWriter<'a> + Send + Sync + 'static,
@@ -17,11 +17,13 @@ where
     let filter_layer =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(env_filter.clone()));
 
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_file)
-        .unwrap_or_else(|e| panic!("Failed to open log file '{}': {e}", log_file.display()));
+    let file = log_file.map(|path| {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .unwrap_or_else(|e| panic!("Failed to open log file '{}': {e}", path.display()))
+    });
 
     // TODO: Consider rewriting the mutually-exclusive 'bunyan' feature to make two additive
     // features that are given separate sinks and let the user configure as they desire.
@@ -39,15 +41,17 @@ where
             .with_writer(sink)
             .boxed();
 
-        let file_layer = fmt::layer()
-            .compact()
-            .with_target(true)
-            .with_line_number(true)
-            .with_span_events(FmtSpan::NONE)
-            .with_ansi(false)
-            .with_writer(file)
-            .with_filter(filter_layer.clone())
-            .boxed();
+        let file_layer = file.map(|file| {
+            fmt::layer()
+                .compact()
+                .with_target(true)
+                .with_line_number(true)
+                .with_span_events(FmtSpan::NONE)
+                .with_ansi(false)
+                .with_writer(file)
+                .with_filter(filter_layer.clone())
+                .boxed()
+        });
 
         tracing_subscriber::registry()
             .with(fmt_layer.with_filter(filter_layer))
@@ -60,10 +64,14 @@ where
         use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
         use tracing_subscriber::Registry;
 
+        let file_layer = file.map(|file| {
+            BunyanFormattingLayer::new(name.clone(), file).with_filter(filter_layer.clone())
+        });
+
         Registry::default()
             .with(JsonStorageLayer)
-            .with(BunyanFormattingLayer::new(name.clone(), sink).with_filter(filter_layer.clone()))
-            .with(BunyanFormattingLayer::new(name, file).with_filter(filter_layer))
+            .with(BunyanFormattingLayer::new(name.clone(), sink).with_filter(filter_layer))
+            .with(file_layer)
     }
 }
 
@@ -88,14 +96,15 @@ pub fn init_subscriber<Sink>(
         env_filter
     };
 
-    let log_file = log_file.unwrap_or("server.log".into());
     let subscriber = get_subscriber(name, env_filter, sink, log_file.clone());
 
     let _ = tracing::subscriber::set_global_default(subscriber)
         .map_err(|_err| eprintln!("Unable to set global default subscriber"));
 
     tracing::debug!("Tracing subscriber setup complete");
-    tracing::info!("Logging to {}", log_file.into_os_string().display());
+    if let Some(path) = log_file {
+        tracing::info!("Logging to {}", path.display());
+    }
 }
 
 #[cfg(feature = "tokio")]
