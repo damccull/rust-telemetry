@@ -1,5 +1,7 @@
 [package]
-name = "telemetry"
+name = "rust-telemetry"
+description = "My opinionated method of using tracing with bunyan optional"
+authors = ["damccull"]
 version = "0.1.0"
 edition = "2024"
 
