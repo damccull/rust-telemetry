@@ -1,0 +1,25 @@
+[package]
+name = "telemetry"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+axum = ["dep:axum", "dep:tower", "dep:tower-http"]
+bunyan = ["dep:tracing-bunyan-formatter"]
+tokio = ["dep:tokio"]
+
+[dependencies]
+axum = { version = "0.8", optional = true }
+tokio = { version = "1", optional = true }
+tower = { version = "0.5", features = ["tracing"], optional = true }
+tower-http = { version = "0.7", features = [
+  "cors",
+  "fs",
+  "request-id",
+  "trace",
+  "tracing",
+  "util",
+], optional = true }
+tracing = { version = "0.1" }
+tracing-bunyan-formatter = { version = "0.3", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
